@@ -9,8 +9,8 @@ import plotly.express as px
 # PAGE CONFIG
 # =========================
 st.set_page_config(
-    page_title="NSE Portfolio Analytics",
-    page_icon="📊",
+    page_title="AlphaForge",
+    page_icon="⚡",
     layout="wide"
 )
 
@@ -20,7 +20,8 @@ st.set_page_config(
 col_title, col_btn = st.columns([5, 1])
 
 with col_title:
-    st.title("📊 NSE Portfolio Analytics")
+    st.title("⚡ AlphaForge")
+    st.caption("Portfolio Intelligence Dashboard")
 
 # =========================
 # STOCK UNIVERSE
@@ -47,33 +48,34 @@ if len(selected) == 0:
 # =========================
 # DATA DOWNLOAD
 # =========================
-data = yf.download(
-    selected,
-    start=start,
-    end=end,
-    auto_adjust=True
-)["Close"]
+with st.spinner("Fetching market data..."):
+    data = yf.download(
+        selected,
+        start=start,
+        end=end,
+        auto_adjust=True
+    )["Close"]
 
-# FIX: ensure DataFrame
-if isinstance(data, pd.Series):
-    data = data.to_frame()
+    # FIX: ensure DataFrame
+    if isinstance(data, pd.Series):
+        data = data.to_frame()
 
-data = data.dropna(how="all")
+    data = data.dropna(how="all")
 
-returns = data.pct_change().dropna()
+    returns = data.pct_change().dropna()
 
-# =========================
-# NIFTY DATA
-# =========================
-nifty = yf.download(
-    "^NSEI",
-    start=start,
-    end=end,
-    auto_adjust=True
-)["Close"].squeeze().dropna()
+    # =========================
+    # NIFTY DATA
+    # =========================
+    nifty = yf.download(
+        "^NSEI",
+        start=start,
+        end=end,
+        auto_adjust=True
+    )["Close"].squeeze().dropna()
 
-nifty_returns = nifty.pct_change().reindex(returns.index).fillna(0)
-nifty_cum = (1 + nifty_returns).cumprod()
+    nifty_returns = nifty.pct_change().reindex(returns.index).fillna(0)
+    nifty_cum = (1 + nifty_returns).cumprod()
 
 # =========================
 # WEIGHTS
@@ -125,9 +127,19 @@ with col_btn:
     st.download_button(
         "⬇ Export",
         data=csv,
-        file_name="portfolio_report.csv",
+        file_name="alphaforge_report.csv",
         use_container_width=True
     )
+
+# =========================
+# COLOR HELPERS
+# =========================
+def colored_metric(col, label, value, is_percent=True, decimals=2):
+    """Render a metric with a green/red dot based on sign."""
+    numeric_value = value
+    emoji = "🟢" if numeric_value >= 0 else "🔴"
+    formatted = f"{value:.{decimals}%}" if is_percent else f"{value:.{decimals}f}"
+    col.metric(f"{emoji} {label}", formatted)
 
 # =========================
 # KPI CARDS
@@ -136,9 +148,10 @@ st.markdown("### Performance Overview")
 
 c1, c2, c3 = st.columns(3)
 
-c1.metric("Annual Return", f"{annual_return:.2%}")
+# Annual return & Sharpe are colored by sign too, volatility stays neutral
+colored_metric(c1, "Annual Return", annual_return)
 c2.metric("Volatility", f"{annual_vol:.2%}")
-c3.metric("Sharpe Ratio", f"{sharpe:.2f}")
+colored_metric(c3, "Sharpe Ratio", sharpe, is_percent=False)
 
 # =========================
 # BENCHMARK
@@ -147,9 +160,9 @@ st.markdown("### Benchmark Comparison")
 
 b1, b2, b3 = st.columns(3)
 
-b1.metric("Portfolio Return", f"{portfolio_total:.2%}")
-b2.metric("NIFTY Return", f"{nifty_total:.2%}")
-b3.metric("Alpha", f"{alpha:.2%}")
+colored_metric(b1, "Portfolio Return", portfolio_total)
+colored_metric(b2, "NIFTY Return", nifty_total)
+colored_metric(b3, "Alpha", alpha)
 
 # =========================
 # 1. HISTORICAL STOCK PRICES (SEPARATE)
@@ -253,23 +266,24 @@ st.plotly_chart(fig_bar, use_container_width=True)
 # =========================
 st.markdown("### Efficient Frontier")
 
-cov = returns.cov() * 252
+with st.spinner("Running Monte Carlo simulation..."):
+    cov = returns.cov() * 252
 
-points = []
+    points = []
 
-for _ in range(3000):
-    w = np.random.random(len(selected))
-    w /= w.sum()
+    for _ in range(3000):
+        w = np.random.random(len(selected))
+        w /= w.sum()
 
-    r = np.sum(returns.mean() * w) * 252
-    v = np.sqrt(np.dot(w.T, np.dot(cov, w)))
-    s = r / v
+        r = np.sum(returns.mean() * w) * 252
+        v = np.sqrt(np.dot(w.T, np.dot(cov, w)))
+        s = r / v
 
-    points.append([r, v, s])
+        points.append([r, v, s])
 
-frontier = pd.DataFrame(points, columns=["Return", "Volatility", "Sharpe"])
+    frontier = pd.DataFrame(points, columns=["Return", "Volatility", "Sharpe"])
 
-best = frontier.loc[frontier["Sharpe"].idxmax()]
+    best = frontier.loc[frontier["Sharpe"].idxmax()]
 
 fig_f = px.scatter(frontier, x="Volatility", y="Return", color="Sharpe")
 
