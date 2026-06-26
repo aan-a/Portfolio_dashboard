@@ -20,7 +20,7 @@ st.set_page_config(
 col_title, col_btn = st.columns([5, 1])
 
 with col_title:
-    st.title("📊 Quant Portfolio Dashboard")
+    st.title("📊 NSE Portfolio Analytics")
 
 # =========================
 # STOCK UNIVERSE
